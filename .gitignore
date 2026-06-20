@@ -1,0 +1,10 @@
+*.env
+*.tex
+/venv
+*.pyc
+*/__pycache__
+*/*/__pycache__
+.DS_Store
+/LinkedinData
+*.jsonl
+*.pdf
