@@ -48,6 +48,5 @@ def main():
 
     print(json.dumps(result.model_dump(), indent=2))
 
-
 if __name__ == "__main__":
     main()

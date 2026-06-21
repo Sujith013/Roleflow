@@ -1,5 +1,8 @@
 """Tailor a LaTeX resume to a job description using the parsed candidate profile."""
 from pathlib import Path
+import sys
+import re
+from uuid import UUID
 
 from src.llm.client import FoundryLLMClient
 from src.models.schemas import CandidateProfile
@@ -80,6 +83,48 @@ def _read_text(file_path: str) -> str:
     return Path(file_path).read_text(encoding="utf-8")
 
 
+def _normalize_notion_database_id(raw_database_id: str) -> str:
+    """Accept a raw UUID, hyphenless UUID, or pasted Notion URL and return a valid database id."""
+    if not raw_database_id:
+        return ""
+
+    candidate = raw_database_id.strip()
+    match = re.search(r"([0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", candidate)
+    if match:
+        try:
+            return str(UUID(match.group(1)))
+        except ValueError:
+            return match.group(1)
+
+    return candidate
+
+
+def _chunk_text(text: str, max_chars: int = 1800) -> list[str]:
+    """Split text into chunks that stay under Notion rich_text limits."""
+    cleaned = text.strip()
+    if not cleaned:
+        return [""]
+
+    chunks = []
+    remaining = cleaned
+    while len(remaining) > max_chars:
+        split_at = remaining.rfind("\n\n", 0, max_chars)
+        if split_at == -1:
+            split_at = remaining.rfind("\n", 0, max_chars)
+        if split_at == -1:
+            split_at = remaining.rfind(" ", 0, max_chars)
+        if split_at == -1 or split_at < max_chars // 2:
+            split_at = max_chars
+
+        chunks.append(remaining[:split_at].strip())
+        remaining = remaining[split_at:].lstrip()
+
+    if remaining:
+        chunks.append(remaining)
+
+    return chunks
+
+
 def tailor_resume(
     job_description: str,
     profile: CandidateProfile,
@@ -136,6 +181,10 @@ def tailor_resume(
         if not NOTION_API_TOKEN or not NOTION_DATABASE_ID:
             return {"ok": False, "reason": "NOTION_API_TOKEN or NOTION_DATABASE_ID not set"}
 
+        database_id = _normalize_notion_database_id(NOTION_DATABASE_ID)
+        if not database_id:
+            return {"ok": False, "reason": "NOTION_DATABASE_ID is empty or invalid"}
+
         url = "https://api.notion.com/v1/pages"
         headers = {
             "Authorization": f"Bearer {NOTION_API_TOKEN}",
@@ -145,30 +194,86 @@ def tailor_resume(
 
         today_str = date.today().isoformat()
 
+        jd_blocks = [
+            {
+                "object": "block",
+                "type": "heading_2",
+                "heading_2": {
+                    "rich_text": [{"type": "text", "text": {"content": "Job Description"}}]
+                },
+            }
+        ] + [
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": chunk}}],
+                },
+            }
+            for chunk in _chunk_text(jd_text)
+        ]
+
         payload = {
-            "parent": {"database_id": NOTION_DATABASE_ID},
+            "parent": {"database_id": database_id},
             "properties": {
                 "Organization": {"title": [{"text": {"content": organization or ""}}]},
                 "Role": {"rich_text": [{"text": {"content": role or ""}}]},
-                "Status": {"rich_text": [{"text": {"content": "Applied"}}]},
+                "Status": {"status": {"name": "Applied"}},
                 "Date": {"date": {"start": today_str}},
-                "JD": {"rich_text": [{"text": {"content": jd_text}}]},
+                "JD": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": chunk}}
+                        for chunk in _chunk_text(jd_text)
+                    ]
+                },
             },
         }
 
         try:
             resp = requests.post(url, headers=headers, json=payload, timeout=15)
-            return {"ok": resp.ok, "status_code": resp.status_code, "text": resp.text}
+            if not resp.ok:
+                return {"ok": False, "status_code": resp.status_code, "text": resp.text}
+
+            page_id = resp.json().get("id")
+            if not page_id:
+                return {"ok": False, "reason": "Notion page created but response did not include a page id"}
+
+            append_url = f"https://api.notion.com/v1/blocks/{page_id}/children"
+            append_payload = {"children": jd_blocks}
+            append_resp = requests.patch(append_url, headers=headers, json=append_payload, timeout=15)
+            if not append_resp.ok:
+                return {
+                    "ok": False,
+                    "status_code": append_resp.status_code,
+                    "text": append_resp.text,
+                    "page_id": page_id,
+                }
+
+            return {"ok": True, "page_id": page_id}
         except Exception as e:
             return {"ok": False, "reason": str(e)}
 
     org_role = _extract_org_role(job_description, llm_client)
     notion_resp = _push_to_notion(org_role.get("organization", ""), org_role.get("role", ""), job_description)
 
-    # attach notion result lightly to the returned object by adding attributes (non-persistent)
-    try:
-        setattr(result, "notion_response", notion_resp)
-    except Exception:
-        pass
+    if notion_resp.get("ok"):
+        print(
+            "Notion application row created: "
+            f"organization={org_role.get('organization', '')!r}, "
+            f"role={org_role.get('role', '')!r}, "
+            f"date={date.today().isoformat()}, "
+            f"status='Applied'",
+            file=sys.stderr,
+        )
+    else:
+        error_detail = notion_resp.get("reason") or notion_resp.get("text") or "unknown error"
+        status_code = notion_resp.get("status_code")
+        prefix = f"Notion application row failed"
+        if status_code is not None:
+            prefix += f" (HTTP {status_code})"
+        print(
+            f"{prefix}: {error_detail}",
+            file=sys.stderr,
+        )
 
     return result

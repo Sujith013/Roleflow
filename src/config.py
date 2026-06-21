@@ -1,6 +1,8 @@
 """Central configuration, loaded from environment variables / .env file."""
 import os
+import re
 from dataclasses import dataclass
+from uuid import UUID
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,8 +28,23 @@ class FoundryConfig:
             )
         return cls(endpoint=endpoint, api_key=api_key, api_version=api_version, model_deployment= model_deployment)
 
+
+def _normalize_notion_database_id(raw_database_id: str) -> str:
+    if not raw_database_id:
+        return ""
+
+    candidate = raw_database_id.strip()
+    match = re.search(r"([0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", candidate)
+    if match:
+        try:
+            return str(UUID(match.group(1)))
+        except ValueError:
+            return match.group(1)
+
+    return candidate
+
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 ADZUNA_APP_ID = os.environ.get("ADZUNA_APP_ID", "")
 ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "")
 NOTION_API_TOKEN = os.environ.get("NOTION_API_TOKEN", "")
-NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID", "")
+NOTION_DATABASE_ID = _normalize_notion_database_id(os.environ.get("NOTION_DATABASE_ID", ""))
