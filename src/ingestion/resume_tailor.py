@@ -26,12 +26,14 @@ IMPORTANT:
 Sections to PRESERVE as-is (copy directly from base_resume.tex):
 - The entire heading/contact block with name, phone, email, location, GitHub URL, LinkedIn URL
 - The Education section
+- Within the skillGroup, preserve the values in the sections "Programming Languages", "Cloud & Databases" and "Web and Systems". you can add content in these sections, but do not remove any of the existing content.
 
 Sections to MODIFY IN THE tailored_tex OUTPUT (do not suggest; IMPLEMENT changes):
-- Technical Skills: ACTUALLY REMOVE skills that don't match the job description. REORDER remaining skills by job relevance. Draw skills from candidate profile's skillGroup.
-- Work Experience: ACTUALLY FILTER to keep only 2-5 most relevant entries from the candidate profile's experience list. Remove irrelevant entries entirely.
-- Projects: ACTUALLY FILTER to keep only 2-5 most relevant entries from the candidate profile's resume_projects list. Remove irrelevant projects entirely.
-- Bullet Points: For retained experience and project entries, REWRITE their bullet points to emphasize keywords and accomplishments that match the job description.
+- Technical Skills: In the "Technical Skills" section of the SkillGroup, ACTUALLY REMOVE skills that don't match the job description. REORDER remaining skills by job relevance. Draw skills from candidate profile's skillGroup. Note: ensure that you remove the skills only if you think they are completely unrelevant to the JD, otherwise don't.
+- Work Experience: ACTUALLY FILTER to keep only 2 out of the 3 work most relevant entries from the candidate profile's experience list. Remove irrelevant entries entirely. Keep all the 3 entries given only if you feel they are all relevant to this resume more than the projects listed, otherwise have only 2 work experience and 3 projects instead of 3 work experience and 2 projects.
+- Projects: ACTUALLY FILTER to keep only 3 most relevant entries from the candidate profile's resume_projects list. Remove irrelevant projects entirely.
+- Bullet Points: For retained experience and project entries, REWRITE their bullet points to emphasize keywords and accomplishments that match the job description. This is very important for ATS compatibility and relevance. Use the job description language and terminology to guide the rewriting.
+- Bullet Point Count: For each retained experience or project, keep a maximum of 3 bullet points for the most relevant project and for the rest only 2 bullet points. If the original entry has more than 3, select the most relevant ones to the job description and rewrite them to highlight keywords and accomplishments.
 
 Implementation Requirements:
 - Preserve ALL personal information from the heading (name, contact details, GitHub URL, LinkedIn URL).
